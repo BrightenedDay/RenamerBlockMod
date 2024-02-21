@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "renamer_block_mod:block/renamer_block_input",
+    "down": "renamer_block_mod:block/renamer_block_output",
+    "up": "renamer_block_mod:block/renamer_block_input",
+    "north": "renamer_block_mod:block/renamer_block_input",
+    "east": "renamer_block_mod:block/renamer_block_input",
+    "south": "renamer_block_mod:block/renamer_block_input",
+    "west": "renamer_block_mod:block/renamer_block_input"
+  }
+}

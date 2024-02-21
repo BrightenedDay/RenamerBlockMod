@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "renamer_block_mod:block/renamer_block"
+    }
+  }
+}
