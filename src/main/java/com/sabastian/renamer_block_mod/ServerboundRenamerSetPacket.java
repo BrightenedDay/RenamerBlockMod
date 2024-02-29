@@ -2,14 +2,9 @@ package com.sabastian.renamer_block_mod;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.NetworkEvent;
-
-import java.security.cert.TrustAnchor;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Supplier;
 
 public class ServerboundRenamerSetPacket {
 
@@ -31,21 +26,20 @@ public class ServerboundRenamerSetPacket {
         buffer.writeBlockPos(blockPos);
     }
 
-    public void handle(Supplier<NetworkEvent.Context> context) {
+    public boolean handle(NetworkEvent.Context context) {
 
-        context.get().getSender().server.sendSystemMessage(Component.literal("Called"));
+        if (context.getSender() == null)
+            return false;
 
-        if (context.get().getDirection() != NetworkDirection.PLAY_TO_SERVER) {
-            context.get().setPacketHandled(false);
-            return;
-        }
-
-        context.get().enqueueWork(() -> {
-            final BlockEntity blockEntity = context.get().getSender().level().getBlockEntity(this.blockPos);
+        context.enqueueWork(() -> {
+            final BlockEntity blockEntity = context.getSender().level().getBlockEntity(this.blockPos);
             if (blockEntity instanceof RenamerBlockEntity renamer) {
-                renamer.setRenameTo(this.renamerSet);
+                renamer.renameTo = renamerSet;
+                renamer.getLevel().sendBlockUpdated(this.blockPos, renamer.getBlockState(), renamer.getBlockState(), Block.UPDATE_CLIENTS);
             }
         });
-        context.get().setPacketHandled(true);
+
+        context.setPacketHandled(true);
+        return true;
     }
 }

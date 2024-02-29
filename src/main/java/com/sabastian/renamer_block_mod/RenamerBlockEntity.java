@@ -4,16 +4,17 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.*;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.BlockEntityType;
-import net.minecraft.world.level.block.entity.FurnaceBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
@@ -24,48 +25,74 @@ import net.minecraftforge.items.wrapper.SidedInvWrapper;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class RenamerBlockEntity extends BlockEntity implements MenuProvider, WorldlyContainer
+public class RenamerBlockEntity extends BlockEntity implements MenuProvider, WorldlyContainer, Nameable
 {
-    private final ItemStackHandler itemHandler = new ItemStackHandler(2);
+    private final ItemStackHandler itemHandler = new ItemStackHandler(2) {
+        @Override
+        protected void onContentsChanged(int slot) {
+            setChanged();
+        }
+    };
+    private LazyOptional<? extends IItemHandler>[] handlers;
 
-    private LazyOptional<IItemHandler> lazyItemHandler = LazyOptional.empty();
-    private String renameTo = "";
-
+    //private LazyOptional<IItemHandler> lazyItemHandler = LazyOptional.empty();
+    public String renameTo = "";
+    @Nullable
+    private Component name;
     private static final int INPUT_SLOT = 0;
     private static final int OUTPUT_SLOT = 1;
 
     public RenamerBlockEntity(BlockPos pPos, BlockState pBlockState) {
         super(RenamerBlockMod.RENAMER_BLOCKENTITY.get(), pPos, pBlockState);
+        this.handlers = SidedInvWrapper.create(this, new Direction[]{Direction.UP, Direction.DOWN, Direction.NORTH});
     }
 
     @Override
-    public @NotNull <T> LazyOptional<T> getCapability(@NotNull Capability<T> cap, @Nullable Direction side) {
-        if (cap == ForgeCapabilities.ITEM_HANDLER)
-            return lazyItemHandler.cast();
+    @NotNull
+    public <T> LazyOptional<T> getCapability(@NotNull Capability<T> cap, @Nullable Direction side) {
+        if (!this.remove && cap == ForgeCapabilities.ITEM_HANDLER) {
+            if (side == Direction.DOWN) {
+                return handlers[OUTPUT_SLOT].cast();
+            } else {
+                return handlers[INPUT_SLOT].cast();
+            }
+        }
         return super.getCapability(cap, side);
-    }
-
-    @Override
-    public void onLoad() {
-        super.onLoad();
-        lazyItemHandler = LazyOptional.of(() -> itemHandler);
     }
 
     @Override
     public void invalidateCaps() {
         super.invalidateCaps();
-        lazyItemHandler.invalidate();
+        handlers[0].invalidate();
+        handlers[1].invalidate();
+        //lazyItemHandler.invalidate();
     }
 
     @Override
     public void reviveCaps() {
         super.reviveCaps();
-        //lazyItemHandler = SidedInvWrapper.create(this, new Direction[]{Direction.UP, Direction.DOWN, Direction.NORTH})
+        this.handlers = SidedInvWrapper.create(this, new Direction[]{Direction.UP, Direction.DOWN, Direction.NORTH});
+    }
+
+    @Nullable
+    @Override
+    public Component getCustomName() {
+        return this.name;
+    }
+
+    public void setCustomName(Component pName) {
+        this.name = pName;
     }
 
     @Override
+    public Component getName() {
+        return this.name != null ? this.name : Component.translatable("block.renamer_block_mod.renamer_block");
+    }
+
+    @NotNull
+    @Override
     public Component getDisplayName() {
-        return Component.translatable("block.renamer_block_mod.renamer_block");
+        return this.getName();
     }
 
     public void drops() {
@@ -84,21 +111,15 @@ public class RenamerBlockEntity extends BlockEntity implements MenuProvider, Wor
         return new RenamerMenu(i, inventory, this);
     }
 
-    public void setRenameTo(String newRename) {
-        this.renameTo = newRename;
-    }
-
-    public String getRename() {
-        return renameTo;
-    }
-
     public void tick(Level level, BlockPos pos, BlockState state) {
+
+        if (level == null || this.level.isClientSide())
+            return;
 
         if (this.renameTo == null)
             return;
 
         if (!this.itemHandler.getStackInSlot(INPUT_SLOT).isEmpty() && AvailableToOutput()) {
-            setChanged(level, pos, state);
             ItemStack itemStack = this.itemHandler.getStackInSlot(INPUT_SLOT).copy();
             int leftSpace = itemStack.getMaxStackSize() - this.itemHandler.getStackInSlot(OUTPUT_SLOT).getCount();
             int extractAmount = 0;
@@ -120,18 +141,20 @@ public class RenamerBlockEntity extends BlockEntity implements MenuProvider, Wor
                 }
 
                 this.itemHandler.insertItem(OUTPUT_SLOT, itemStack, false);
+                level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL);
             }
         }
     }
 
     private boolean AvailableToOutput() {
-        if (this.itemHandler.getStackInSlot(OUTPUT_SLOT).getCount() < this.itemHandler.getStackInSlot(OUTPUT_SLOT).getMaxStackSize()) {
-            if (!this.itemHandler.getStackInSlot(OUTPUT_SLOT).isEmpty()) {
-                return this.itemHandler.getStackInSlot(INPUT_SLOT).is(this.itemHandler.getStackInSlot(OUTPUT_SLOT).getItem());
-            } else {
-                return true;
-            }
+
+        if (this.itemHandler.getStackInSlot(OUTPUT_SLOT).isEmpty())
+            return true;
+
+        if (this.itemHandler.getStackInSlot(INPUT_SLOT).is(this.itemHandler.getStackInSlot(OUTPUT_SLOT).getItem())) {
+            return this.itemHandler.getStackInSlot(OUTPUT_SLOT).getCount() < this.itemHandler.getStackInSlot(OUTPUT_SLOT).getMaxStackSize();
         }
+
         return false;
     }
 
@@ -139,14 +162,36 @@ public class RenamerBlockEntity extends BlockEntity implements MenuProvider, Wor
     protected void saveAdditional(CompoundTag pTag) {
         super.saveAdditional(pTag);
         pTag.put("inv", this.itemHandler.serializeNBT());
-        pTag.putString("restring", RenamerBlockEntity.this.renameTo);
+        pTag.putString("restring", this.renameTo);
+        if (this.name != null) {
+            pTag.putString("CustomName", Component.Serializer.toJson(this.name));
+        }
     }
 
     @Override
     public void load(CompoundTag pTag) {
         super.load(pTag);
         this.renameTo = pTag.getString("restring");
-        this.itemHandler.deserializeNBT(pTag.getCompound("inv"));
+        if (pTag.contains("inv"))
+            this.itemHandler.deserializeNBT(pTag.getCompound("inv"));
+        if (pTag.contains("CustomName", 8)) {
+            this.name = Component.Serializer.fromJson(pTag.getString("CustomName"));
+        }
+    }
+
+    @Override
+    @NotNull
+    public CompoundTag getUpdateTag() {
+        CompoundTag tag = new CompoundTag();
+        tag.put("inv", this.itemHandler.serializeNBT());
+        tag.putString("restring", this.renameTo);
+        return tag;
+    }
+
+    @Nullable
+    @Override
+    public Packet<ClientGamePacketListener> getUpdatePacket() {
+        return ClientboundBlockEntityDataPacket.create(this);
     }
 
     @Override
@@ -160,25 +205,25 @@ public class RenamerBlockEntity extends BlockEntity implements MenuProvider, Wor
 
     @Override
     public boolean canPlaceItemThroughFace(int i, ItemStack itemStack, @Nullable Direction direction) {
-        if (direction != Direction.DOWN)
-            return true;
-        return false;
+        return this.canPlaceItem(i, itemStack);
     }
 
     @Override
     public boolean canTakeItemThroughFace(int i, ItemStack itemStack, Direction direction) {
-        if (direction == Direction.DOWN)
-            return true;
-        return false;
+        return true;
     }
 
     @Override
     public int getContainerSize() {
-        return 2;
+        return this.itemHandler.getSlots();
     }
 
     @Override
     public boolean isEmpty() {
+
+        if (itemHandler.getStackInSlot(INPUT_SLOT) == ItemStack.EMPTY && itemHandler.getStackInSlot(OUTPUT_SLOT) == ItemStack.EMPTY)
+            return true;
+
         return false;
     }
 
@@ -194,12 +239,20 @@ public class RenamerBlockEntity extends BlockEntity implements MenuProvider, Wor
 
     @Override
     public ItemStack removeItemNoUpdate(int i) {
-        return null;
+        if (i >= 0 && i < this.itemHandler.getSlots()){
+            ItemStack stack = this.itemHandler.getStackInSlot(i);
+            this.itemHandler.setStackInSlot(i, ItemStack.EMPTY);
+            return stack;
+        }
+        return ItemStack.EMPTY;
     }
 
     @Override
     public void setItem(int i, ItemStack itemStack) {
-
+        this.itemHandler.setStackInSlot(i, itemStack);
+        if (itemStack.getCount() > this.getMaxStackSize()) {
+            itemStack.setCount(this.getMaxStackSize());
+        }
     }
 
     @Override
@@ -209,5 +262,7 @@ public class RenamerBlockEntity extends BlockEntity implements MenuProvider, Wor
 
     @Override
     public void clearContent() {
+        this.itemHandler.setStackInSlot(INPUT_SLOT, ItemStack.EMPTY);
+        this.itemHandler.setStackInSlot(OUTPUT_SLOT, ItemStack.EMPTY);
     }
 }

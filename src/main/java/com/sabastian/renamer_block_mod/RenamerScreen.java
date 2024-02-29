@@ -28,7 +28,6 @@ public class RenamerScreen extends AbstractContainerScreen<RenamerMenu> {
         RenderSystem.setShaderTexture(0, GUI_TEXTURE);
         int x = (width - imageWidth) / 2;
         int y = (height - imageHeight) / 2;
-
         guiGraphics.blit(GUI_TEXTURE, x, y, 0, 0, imageWidth, imageHeight);
         //(((RenamerMenu)this.menu).getSlot(0).hasItem() ? 0 : 16)
         guiGraphics.blit(GUI_TEXTURE, this.leftPos + 33, this.topPos + 54, 0, this.imageHeight, 110, 16);
@@ -45,7 +44,8 @@ public class RenamerScreen extends AbstractContainerScreen<RenamerMenu> {
     @Override
     protected void init() {
         super.init();
-        this.renameTo = ((RenamerMenu)this.menu).blockEntity.getRename();
+        this.renameTo = this.menu.blockEntity.renameTo;
+
         int x = (this.width - this.imageWidth) / 2;
         int y = (this.height - this.imageHeight) / 2;
         this.name = new EditBox(this.font, x + 37, y + 59, 103, 12, Component.translatable("block.renamer_block_mod.renamer_block"));
@@ -53,9 +53,9 @@ public class RenamerScreen extends AbstractContainerScreen<RenamerMenu> {
         this.name.setTextColor(-1);
         this.name.setTextColorUneditable(-1);
         this.name.setBordered(false);
-        this.name.setMaxLength(50);
-        this.name.setResponder(this::onNameChanged);
+        this.name.setMaxLength(40);
         this.name.setValue(this.renameTo);
+        this.name.setResponder(this::onNameChanged);
         this.addWidget(this.name);
         this.setInitialFocus(this.name);
         this.name.setEditable(true);
@@ -63,12 +63,11 @@ public class RenamerScreen extends AbstractContainerScreen<RenamerMenu> {
     }
 
     private void onNameChanged(String newValue) {
-
         if (this.renameTo == newValue)
             return;
 
         this.renameTo = newValue;
-        RenamerBlockMod.INSTANCE.sendToServer(new ServerboundRenamerSetPacket(newValue, ((RenamerMenu)this.menu).blockEntity.getBlockPos()));
+        RenamerBlockMod.INSTANCE.sendToServer(new ServerboundRenamerSetPacket(newValue, this.menu.blockEntity.getBlockPos()));
     }
 
     public boolean keyPressed(int pKeyCode, int pScanCode, int pModifiers) {

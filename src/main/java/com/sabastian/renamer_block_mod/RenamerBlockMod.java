@@ -6,28 +6,28 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
-import net.minecraft.world.item.*;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.extensions.IForgeMenuType;
-import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.network.IContainerFactory;
 import net.minecraftforge.network.NetworkDirection;
+import net.minecraftforge.network.NetworkEvent;
 import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.simple.SimpleChannel;
 import net.minecraftforge.registries.DeferredRegister;
@@ -41,6 +41,8 @@ import java.util.function.Supplier;
 public class RenamerBlockMod
 {
     public static final String MOD_ID = "renamer_block_mod";
+
+    //public static final Logger LOGGER = LogUtils.getLogger();
 
     public static final DeferredRegister<CreativeModeTab> CTABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MOD_ID);
 
@@ -77,20 +79,14 @@ public class RenamerBlockMod
     public static final RegistryObject<CreativeModeTab> RENAMER_MOD_TAB = CTABS.register("renamer_block_tab",
             () -> CreativeModeTab.builder().icon(() -> new ItemStack(RENAMER_BLOCK.get())).title(Component.translatable("creativetab.renamer_block_tab")).displayItems((itemDisplayParameters, output) -> {output.accept(RENAMER_BLOCK.get());}).build());
 
-    private static final String PROTOCOL_VERSION = "1";
-    public static final SimpleChannel INSTANCE = NetworkRegistry.newSimpleChannel(
-            new ResourceLocation(MOD_ID, "main"),
-            () -> PROTOCOL_VERSION,
-            PROTOCOL_VERSION::equals,
-            PROTOCOL_VERSION::equals
-    );
+    public static final String NETWORK_VERSION = String.valueOf(1);
 
-    //public static final SimpleChannel INSTANCE = NetworkRegistry.ChannelBuilder.named(
-    //        new ResourceLocation(MOD_ID, "main"))
-    //        .serverAcceptedVersions(version -> false)
-    //        .clientAcceptedVersions(version -> false)
-    //        .networkProtocolVersion(() -> "1")
-    //        .simpleChannel();
+    public static final SimpleChannel INSTANCE = NetworkRegistry.ChannelBuilder.named(
+            new ResourceLocation(MOD_ID, "main"))
+            .serverAcceptedVersions(NETWORK_VERSION::equals)
+            .clientAcceptedVersions(NETWORK_VERSION::equals)
+            .networkProtocolVersion(() -> NETWORK_VERSION)
+            .simpleChannel();
 
     private static void initPackets() {
         int index = 0;
@@ -99,8 +95,19 @@ public class RenamerBlockMod
         INSTANCE.messageBuilder(ServerboundRenamerSetPacket.class, index++, NetworkDirection.PLAY_TO_SERVER)
                 .encoder(ServerboundRenamerSetPacket::write)
                 .decoder(ServerboundRenamerSetPacket::new)
-                .consumerMainThread(ServerboundRenamerSetPacket::handle)
+                .consumerMainThread((packet, contextSupplier) -> {
+                    NetworkEvent.Context context = contextSupplier.get();
+                    if (packet.handle(context)) {
+                        context.setPacketHandled(true);
+                    }
+                })
                 .add();
+
+//        INSTANCE.messageBuilder(ClientboundRenamerUpdatePacket.class, index++, NetworkDirection.PLAY_TO_CLIENT)
+//                .encoder(ClientboundRenamerUpdatePacket::write)
+//                .decoder(ClientboundRenamerUpdatePacket::new)
+//                .consumerMainThread(ClientboundRenamerUpdatePacket::handle)
+//                .add();
     }
 
     public RenamerBlockMod()
