@@ -13,7 +13,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.capabilities.Capability;
@@ -35,7 +34,7 @@ public class RenamerBlockEntity extends BlockEntity implements MenuProvider, Wor
     };
     private LazyOptional<? extends IItemHandler>[] handlers;
 
-    //private LazyOptional<IItemHandler> lazyItemHandler = LazyOptional.empty();
+    private LazyOptional<IItemHandler> lazyItemHandler = LazyOptional.empty();
     public String renameTo = "";
     @Nullable
     private Component name;
@@ -45,6 +44,7 @@ public class RenamerBlockEntity extends BlockEntity implements MenuProvider, Wor
     public RenamerBlockEntity(BlockPos pPos, BlockState pBlockState) {
         super(RenamerBlockMod.RENAMER_BLOCKENTITY.get(), pPos, pBlockState);
         this.handlers = SidedInvWrapper.create(this, new Direction[]{Direction.UP, Direction.DOWN, Direction.NORTH});
+        this.lazyItemHandler = LazyOptional.of(() -> this.itemHandler);
     }
 
     @Override
@@ -53,6 +53,8 @@ public class RenamerBlockEntity extends BlockEntity implements MenuProvider, Wor
         if (!this.remove && cap == ForgeCapabilities.ITEM_HANDLER) {
             if (side == Direction.DOWN) {
                 return handlers[OUTPUT_SLOT].cast();
+            } else if (side == null) {
+                return lazyItemHandler.cast();
             } else {
                 return handlers[INPUT_SLOT].cast();
             }
@@ -65,7 +67,7 @@ public class RenamerBlockEntity extends BlockEntity implements MenuProvider, Wor
         super.invalidateCaps();
         handlers[0].invalidate();
         handlers[1].invalidate();
-        //lazyItemHandler.invalidate();
+        lazyItemHandler.invalidate();
     }
 
     @Override
@@ -141,7 +143,7 @@ public class RenamerBlockEntity extends BlockEntity implements MenuProvider, Wor
                 }
 
                 this.itemHandler.insertItem(OUTPUT_SLOT, itemStack, false);
-                level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL);
+                setChanged(level, pos, state);
             }
         }
     }
@@ -152,7 +154,9 @@ public class RenamerBlockEntity extends BlockEntity implements MenuProvider, Wor
             return true;
 
         if (this.itemHandler.getStackInSlot(INPUT_SLOT).is(this.itemHandler.getStackInSlot(OUTPUT_SLOT).getItem())) {
-            return this.itemHandler.getStackInSlot(OUTPUT_SLOT).getCount() < this.itemHandler.getStackInSlot(OUTPUT_SLOT).getMaxStackSize();
+            if (this.itemHandler.getStackInSlot(OUTPUT_SLOT).getCount() < this.itemHandler.getStackInSlot(OUTPUT_SLOT).getMaxStackSize()) {
+                return this.renameTo == this.itemHandler.getStackInSlot(OUTPUT_SLOT).getDisplayName().getString();
+            }
         }
 
         return false;

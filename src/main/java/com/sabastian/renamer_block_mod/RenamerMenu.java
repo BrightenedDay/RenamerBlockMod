@@ -37,7 +37,7 @@ public class RenamerMenu extends AbstractContainerMenu {
             this.addSlot(new Slot(inv, i, 8 + i * 18, 142));
         }
 
-        this.blockEntity.getCapability(ForgeCapabilities.ITEM_HANDLER).ifPresent(iItemHandler -> {
+        this.blockEntity.getCapability(ForgeCapabilities.ITEM_HANDLER, null).ifPresent(iItemHandler -> {
             this.addSlot(new SlotItemHandler(iItemHandler, 0, 46, 32));
             this.addSlot(new OutputSlotItemHandler(iItemHandler, 1, 114, 32));
         });
